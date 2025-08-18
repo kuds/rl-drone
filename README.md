@@ -8,3 +8,6 @@
 
 ## Random Point 
 ![](Images/sac_drone_random.gif)
+
+## Development Notes
+- `VecNormalize`  can cause issue when used with a new environment along with a model that is already trained. It is good to save the VecNormalize if you want to use for further validation [Reinforcement Learning Tips and Tricks](https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html)
