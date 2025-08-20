@@ -3,11 +3,14 @@
 ## Drone Hovering
 ![](Images/sac_drone_hover.gif)
 
-## Follow the Line
-![](Images/sac_drone_follow.gif)
-
 ## Random Point 
 ![](Images/sac_drone_random.gif)
+
+## Multiple Targets
+![](Images/sac_drone_targets.gif)
+
+## Follow the Line
+![](Images/sac_drone_follow.gif)
 
 ## Development Notes
 - `VecNormalize`  can cause issue when used with a new environment along with a model that is already trained. It is good to save the VecNormalize if you want to use for further validation [Reinforcement Learning Tips and Tricks](https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html)
