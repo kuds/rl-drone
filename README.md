@@ -1,16 +1,18 @@
 # Automous Drone Navigation using Reinforcement Learning
 
 ## Drone Hovering
-Move the drone to a spot right above it and have it stay in the area. The spot stays in the same location for each run.
+Moves the drone to a spot right above it and have it stay in the area. The spot stays in the same location for each run.
 
 ![](Images/sac_drone_hover.gif)
 
 ## Random Point 
-Move the drone to a random spot and have it stay in the area. The spots location changes for each run.
+Moves the drone to a random spot and have it stay in the area. The spots location changes for each run.
 
 ![](Images/sac_drone_random.gif)
 
 ## Multiple Targets
+Moves the drone to a random spot and have it stay in the area. The spots location changes after each contact with the location.
+
 ![](Images/sac_drone_targets.gif)
 
 ## Follow the Line
