@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rl-drone"
+version = "0.1.0"
+description = "Autonomous Drone Navigation using Reinforcement Learning"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "gymnasium>=0.29.0",
+    "mujoco>=3.0.0",
+    "numpy>=1.24.0",
+    "robot-descriptions>=1.7.0",
+    "stable-baselines3>=2.1.0",
+    "torch>=2.0.0",
+]
+
+[project.optional-dependencies]
+train = [
+    "matplotlib>=3.7.0",
+    "mediapy>=1.1.0",
+    "pandas>=2.0.0",
+    "tensorboard>=2.14.0",
+]
+curve = [
+    "scipy>=1.11.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
