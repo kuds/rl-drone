@@ -1,1 +1,43 @@
+# macOS
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ML artifacts
+logs/
+runs/
+tensorboard/
+*.pkl
+*.zip
+*.npz
+wandb/
+
+# Training checkpoints and models
+checkpoints/
+*.ckpt
+
+# Environment
+.env
+.env.local
