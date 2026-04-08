@@ -144,26 +144,36 @@ class DroneRacerEnv(MujocoEnv):
         drone_pos = self.data.qpos[:3]
         distance_to_target = np.linalg.norm(drone_pos - self.target_pos)
 
-        reward = self._reward_fn(distance_to_target)
+        distance_reward = self._reward_fn(distance_to_target)
+        reward = distance_reward
 
         drone_speed = np.linalg.norm(self.data.qvel[:3])
-        reward += self.speed_factor * drone_speed
+        speed_reward = self.speed_factor * drone_speed
+        reward += speed_reward
 
         made_contact = 0
         touch_reported = False
+        contact_bonus = 0.0
+        complete_bonus = 0.0
+        oob_penalty = 0.0
+        no_contact_penalty = 0.0
+        time_penalty_applied = 0.0
         sensor_reading = self.data.sensor(self.fly_sensor_id).data[0]
 
         if sensor_reading > 0:
             touch_reported = True
-            reward += self.contact_bonus
+            contact_bonus = self.contact_bonus
+            reward += contact_bonus
         elif distance_to_target <= self.sphere_size:
             made_contact = 1
-            reward += self.contact_bonus
+            contact_bonus = self.contact_bonus
+            reward += contact_bonus
             rounded_current = round_tuple_elements(self.current_point)
             if self.total_contacts > 0 and rounded_current == (0, 0, self.track_height):
                 self.laps += 1
                 terminated = True
-                reward += self.complete_bonus
+                complete_bonus = self.complete_bonus
+                reward += complete_bonus
 
             self._update_track_position()
             self.total_contacts += 1
@@ -171,17 +181,20 @@ class DroneRacerEnv(MujocoEnv):
         else:
             self.steps_without_contact += 1
             if self.steps_without_contact > self.terminate_without_contact:
-                reward = self.out_of_bounds_penalty
+                oob_penalty = self.out_of_bounds_penalty
+                reward = oob_penalty
                 terminated = True
 
         if distance_to_target > self.max_distance or drone_pos[2] < 0.025:
-            reward = self.no_contact_penalty
+            no_contact_penalty = self.no_contact_penalty
+            reward = no_contact_penalty
             terminated = True
         elif self.step_number > self.episode_length:
             truncated = True
 
         if not terminated and not truncated:
-            reward -= self.time_penalty
+            time_penalty_applied = self.time_penalty
+            reward -= time_penalty_applied
 
         self.total_reward += reward
         observation = self._get_obs()
@@ -196,6 +209,14 @@ class DroneRacerEnv(MujocoEnv):
             "drone_speed": drone_speed,
             "steps_without_contact": self.steps_without_contact,
             "laps": self.laps,
+            "success": self.laps > 0,
+            "reward_distance": distance_reward,
+            "reward_speed": speed_reward,
+            "reward_contact": contact_bonus,
+            "reward_complete": complete_bonus,
+            "reward_oob_penalty": oob_penalty,
+            "reward_no_contact_penalty": no_contact_penalty,
+            "reward_time_penalty": time_penalty_applied,
         }
 
         return observation, reward, terminated, truncated, info
