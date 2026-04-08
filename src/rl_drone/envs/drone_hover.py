@@ -131,7 +131,10 @@ class DroneHoverEnv(MujocoEnv):
         self.step_number += 1
         drone_pos = self.data.qpos[:3]
         distance_to_target = np.linalg.norm(drone_pos - self.target_pos)
-        reward = modified_tanh_final(distance_to_target)
+        distance_reward = modified_tanh_final(distance_to_target)
+        reward = distance_reward
+        contact_bonus = 0.0
+        oob_penalty = 0.0
 
         made_contact = 0
         touch_reported = False
@@ -139,22 +142,27 @@ class DroneHoverEnv(MujocoEnv):
 
         if sensor_reading > 0:
             touch_reported = True
-            reward = self.contact_reward
+            contact_bonus = self.contact_reward
+            reward = contact_bonus
         elif distance_to_target <= self.sphere_size:
             made_contact = 1
-            reward = self.contact_reward
+            contact_bonus = self.contact_reward
+            reward = contact_bonus
             if self.move_on_contact:
                 self._randomize_fly_zone()
 
         truncated = False
         terminated = False
         if distance_to_target > self.max_distance or drone_pos[2] < 0.025:
-            reward = self.out_of_bounds_penalty
+            oob_penalty = self.out_of_bounds_penalty
+            reward = oob_penalty
             terminated = True
         elif self.step_number > self.episode_len:
             truncated = True
 
         self.total_reward += reward
+        self.total_contacts += made_contact
+        success = touch_reported or made_contact > 0
 
         observation = self._get_obs()
         info = {
@@ -162,6 +170,11 @@ class DroneHoverEnv(MujocoEnv):
             "touch_reported": touch_reported,
             "sensor_reading": sensor_reading,
             "made_contact": made_contact,
+            "total_contacts": self.total_contacts,
+            "success": success,
+            "reward_distance": distance_reward,
+            "reward_contact": contact_bonus,
+            "reward_oob_penalty": oob_penalty,
         }
 
         return observation, reward, terminated, truncated, info
