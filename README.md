@@ -79,7 +79,6 @@ consistent directory tree for training artifacts. With Google Drive mounted at
 
 ```
 /content/gdrive/MyDrive/Finding Theta/BitCrazy/training jobs/<env_str>/<rl_type>/
-├── tensorboard/              # shared across every run of this (env, algo)
 └── <YYYY-MM-DD_HH-MM-SS>/    # one directory per training run
     ├── best_model.zip                    # from EvalCallback
     ├── best_model_vec_normalize.pkl      # from VecNormalizeSaveCallback
@@ -89,6 +88,7 @@ consistent directory tree for training artifacts. With Google Drive mounted at
     ├── evaluations.npz                   # from EvalCallback
     ├── <name_prefix>.csv                 # from ReformatEvalCallback
     ├── config.json                       # from ConfigSaveCallback
+    ├── tensorboard/                      # TensorBoard event files
     ├── monitor/                          # Monitor wrapper CSV logs
     ├── checkpoints/                      # CheckpointCallback snapshots
     ├── plots/                            # TrainingPlotsCallback PNGs

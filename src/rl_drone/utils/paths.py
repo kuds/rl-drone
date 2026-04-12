@@ -4,12 +4,12 @@ Every training notebook writes artifacts into the same three-level tree so
 results are easy to locate, compare, and sync:
 
     <base>/training jobs/<env_str>/<rl_type>/
-    ├── tensorboard/              # shared across runs of this (env, algo)
     └── <timestamp>/              # one directory per training run
         ├── best_model.zip
         ├── final_model.zip
         ├── config.json
         ├── evaluations.npz
+        ├── tensorboard/
         ├── monitor/
         ├── checkpoints/
         ├── plots/
@@ -37,10 +37,10 @@ class RunPaths:
 
     Attributes:
         base_dir: ``<parent>/training jobs/<env_str>/<rl_type>/``. Contains
-            ``tensorboard/`` and one subdirectory per run.
+            one subdirectory per run.
         run_dir: ``<base_dir>/<timestamp>/``. Root of a single run's artifacts.
-        tensorboard_dir: ``<base_dir>/tensorboard/``. Shared across all runs
-            of the same ``(env_str, rl_type)`` so TensorBoard can compare them.
+        tensorboard_dir: ``<run_dir>/tensorboard/``. Scoped to this run so
+            each training job owns its own TensorBoard event files.
         monitor_dir: ``<run_dir>/monitor/``. Stable-Baselines3 ``Monitor``
             CSV logs.
         checkpoints_dir: ``<run_dir>/checkpoints/``. Intermediate model
@@ -128,7 +128,7 @@ def build_run_paths(
     return RunPaths(
         base_dir=base_dir,
         run_dir=run_dir,
-        tensorboard_dir=os.path.join(base_dir, "tensorboard"),
+        tensorboard_dir=os.path.join(run_dir, "tensorboard"),
         monitor_dir=os.path.join(run_dir, "monitor"),
         checkpoints_dir=os.path.join(run_dir, "checkpoints"),
         plots_dir=os.path.join(run_dir, "plots"),
