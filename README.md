@@ -49,23 +49,59 @@ make test
 
 ```
 src/rl_drone/
-├── envs/               # Gymnasium environments
-│   ├── drone_hover.py  # Hover / random point / multi-target tasks
-│   └── drone_racer.py  # Track-following racer task
-├── callbacks/          # Stable-Baselines3 training callbacks
-│   ├── video_record.py
-│   ├── reformat_eval.py
-│   └── vec_normalize_save.py
-└── utils/              # Shared utilities
-    ├── rewards.py      # Reward shaping functions
-    ├── track.py        # Circular track generation
-    ├── curve.py        # 3D spline curve fitting
-    └── model_xml.py    # MuJoCo model XML setup
+├── envs/                    # Gymnasium environments
+│   ├── drone_hover.py       # Hover / random point / multi-target tasks
+│   └── drone_racer.py       # Track-following racer task
+├── callbacks/               # Stable-Baselines3 training callbacks
+│   ├── video_record.py      # Record MP4 rollouts + per-step CSVs
+│   ├── reformat_eval.py     # Convert evaluations.npz → CSV summary
+│   ├── vec_normalize_save.py# Persist VecNormalize stats on new-best
+│   ├── training_plots.py    # Auto-save learning-curve plots during training
+│   └── config_save.py       # Persist hyperparams/config as JSON
+└── utils/                   # Shared utilities
+    ├── rewards.py           # Reward shaping functions
+    ├── track.py             # Circular track generation
+    ├── curve.py             # 3D spline curve fitting
+    ├── model_xml.py         # MuJoCo model XML setup
+    ├── plotting.py          # Shared matplotlib plot helpers
+    └── paths.py             # build_run_paths / RunPaths artifact layout
 ```
 
 The Jupyter notebooks in the root directory are the original Colab training
 scripts. The `src/rl_drone/` package extracts their shared code into a
 reusable, testable library.
+
+### Training Artifact Layout
+
+Every notebook calls `rl_drone.utils.paths.build_run_paths` to produce a
+consistent directory tree for training artifacts. With Google Drive mounted at
+`/content/gdrive`, a run writes into:
+
+```
+/content/gdrive/MyDrive/Finding Theta/BitCrazy/training jobs/<env_str>/<rl_type>/
+├── tensorboard/              # shared across every run of this (env, algo)
+└── <YYYY-MM-DD_HH-MM-SS>/    # one directory per training run
+    ├── best_model.zip                    # from EvalCallback
+    ├── best_model_vec_normalize.pkl      # from VecNormalizeSaveCallback
+    ├── final_model.zip                   # saved after model.learn()
+    ├── final_normalized_env.pkl          # VecNormalize stats (train)
+    ├── final_normalized_env_val.pkl      # VecNormalize stats (eval)
+    ├── evaluations.npz                   # from EvalCallback
+    ├── <name_prefix>.csv                 # from ReformatEvalCallback
+    ├── config.json                       # from ConfigSaveCallback
+    ├── monitor/                          # Monitor wrapper CSV logs
+    ├── checkpoints/                      # CheckpointCallback snapshots
+    ├── plots/                            # TrainingPlotsCallback PNGs
+    └── videos/                           # VecVideoRecorder MP4 + per-step CSV
+```
+
+`<env_str>` is one of `DroneHover`, `DroneRacer`, `MultipleTargets`,
+`RandomPoint`; `<rl_type>` is the RL algorithm (e.g. `SAC`); `name_prefix` is
+`f"{env_str}_{rl_type}".lower()` across all notebooks. Timestamps use
+`%Y-%m-%d_%H-%M-%S` so run directories are safe on every filesystem.
+
+When `use_google_drive=False`, the same layout is rooted at
+`/content/training jobs/<env_str>/<rl_type>/` instead.
 
 ## Development Notes
 - `VecNormalize`  can cause issue when used with a new environment along with a model that is already trained. It is good to save the VecNormalize if you want to use for further validation [Reinforcement Learning Tips and Tricks](https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html)
