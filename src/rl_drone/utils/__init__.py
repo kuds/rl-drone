@@ -1,4 +1,4 @@
-"""Utility functions for reward shaping, track generation, model setup, and plotting."""
+"""Utility functions for reward shaping, track generation, model setup, plotting, and paths."""
 
 from rl_drone.utils.rewards import modified_tanh, modified_tanh_final, multiplicative_inverse
 from rl_drone.utils.track import (
@@ -12,6 +12,12 @@ from rl_drone.utils.plotting import (
     plot_reward_breakdown,
     plot_trajectory_3d,
 )
+from rl_drone.utils.paths import (
+    RunPaths,
+    TIMESTAMP_FORMAT,
+    build_run_paths,
+    default_timestamp,
+)
 
 __all__ = [
     "modified_tanh",
@@ -24,4 +30,8 @@ __all__ = [
     "plot_learning_curves",
     "plot_reward_breakdown",
     "plot_trajectory_3d",
+    "RunPaths",
+    "TIMESTAMP_FORMAT",
+    "build_run_paths",
+    "default_timestamp",
 ]
