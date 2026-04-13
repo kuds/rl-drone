@@ -100,6 +100,60 @@ class _FakeVecEnv:
         )
 
 
+class _FakeVecNormalize:
+    """VecEnv-wrapper look-alike that mimics ``VecNormalize(norm_reward=True)``.
+
+    Each ``step`` emits a reward of ``1.0 / scale`` (the "normalized" value),
+    while ``get_original_reward`` returns the un-normalized reward of ``1.0``.
+    Used to exercise the VecNormalize-aware branch of
+    ``run_best_model_evaluation``.
+    """
+
+    def __init__(self, ep_length=5, scale=32.0, norm_reward=True):
+        self.ep_length = ep_length
+        self.scale = float(scale)
+        self.norm_reward = norm_reward
+        self._step = 0
+        self._last_raw = np.array([1.0], dtype=np.float32)
+
+    def reset(self):
+        self._step = 0
+        return np.zeros((1, 4), dtype=np.float32)
+
+    def step(self, action):
+        self._step += 1
+        done = self._step >= self.ep_length
+        self._last_raw = np.array([1.0], dtype=np.float32)
+        normalized = self._last_raw / self.scale
+        return (
+            np.zeros((1, 4), dtype=np.float32),
+            normalized.astype(np.float32),
+            np.array([done]),
+            [{}],
+        )
+
+    def get_original_reward(self):
+        return self._last_raw.copy()
+
+
+class _FakeVecWrapper:
+    """A passthrough VecEnv wrapper that delegates to ``self.venv``.
+
+    Mirrors how ``VecVideoRecorder`` wraps a ``VecNormalize`` — the helper
+    ``_find_vec_normalize`` should walk through this wrapper and still find
+    the inner VecNormalize.
+    """
+
+    def __init__(self, venv):
+        self.venv = venv
+
+    def reset(self):
+        return self.venv.reset()
+
+    def step(self, action):
+        return self.venv.step(action)
+
+
 class TestRunBestModelEvaluation:
     def test_basic_rollout(self):
         model = _FakeModel()
@@ -118,6 +172,37 @@ class TestRunBestModelEvaluation:
         result = run_best_model_evaluation(model, env, n_episodes=2)
         assert result["speeds"].shape == (2,)
         assert np.allclose(result["speeds"], 0.7)
+
+    def test_uses_original_reward_when_vecnormalize(self):
+        # Emulates a ``VecNormalize(norm_reward=True)`` eval env: step returns
+        # ``1.0 / 32`` per step, but ``get_original_reward`` returns ``1.0``.
+        # A 5-step episode should accumulate 5.0 (the un-normalized total),
+        # not ``5 / 32`` — otherwise the reported reward in ``stage_summary``
+        # is in different units from ``Best eval`` / ``evaluate_policy``.
+        model = _FakeModel()
+        env = _FakeVecNormalize(ep_length=5, scale=32.0)
+        result = run_best_model_evaluation(model, env, n_episodes=3)
+        assert np.allclose(result["rewards"], 5.0)
+        assert np.all(result["lengths"] == 5)
+
+    def test_uses_original_reward_through_wrapper_chain(self):
+        # ``VecVideoRecorder``-style wrapper around a VecNormalize: the helper
+        # should still unwrap to the inner VecNormalize.
+        model = _FakeModel()
+        inner = _FakeVecNormalize(ep_length=4, scale=10.0)
+        wrapped = _FakeVecWrapper(inner)
+        result = run_best_model_evaluation(model, wrapped, n_episodes=2)
+        assert np.allclose(result["rewards"], 4.0)
+
+    def test_step_reward_used_when_norm_reward_disabled(self):
+        # When VecNormalize has ``norm_reward=False`` the per-step reward is
+        # already raw, so the rollout should trust ``env.step``'s reward and
+        # not second-guess it via ``get_original_reward``.
+        model = _FakeModel()
+        env = _FakeVecNormalize(ep_length=5, scale=32.0, norm_reward=False)
+        result = run_best_model_evaluation(model, env, n_episodes=2)
+        # 5 steps * (1.0 / 32) per step = 0.15625
+        assert np.allclose(result["rewards"], 5.0 / 32.0)
 
 
 class TestStepDtFromEnv:

@@ -152,6 +152,26 @@ def read_eval_history(eval_file: str) -> Optional[dict]:
     }
 
 
+def _find_vec_normalize(env: Any) -> Any:
+    """Return the first wrapper in a VecEnv chain that exposes the
+    ``VecNormalize`` API, or ``None``.
+
+    Detects VecNormalize by duck-typing for both the ``get_original_reward``
+    method and a ``norm_reward`` attribute, so the helper stays usable even
+    when the tests load this module without importing stable-baselines3.
+    The wrapper chain is walked via the standard ``venv`` attribute, with a
+    guard against cycles.
+    """
+    current = env
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if hasattr(current, "get_original_reward") and hasattr(current, "norm_reward"):
+            return current
+        current = getattr(current, "venv", None)
+    return None
+
+
 def run_best_model_evaluation(
     model: Any,
     env: Any,
@@ -164,10 +184,21 @@ def run_best_model_evaluation(
     notebooks pass in after loading the best model. If the environment's
     ``info`` dict populates ``"drone_speed"``, the rollout also returns
     per-episode mean speeds; otherwise ``speeds`` is an empty array.
+
+    When ``env`` is wrapped by ``VecNormalize`` with ``norm_reward=True``,
+    the rollout reward is sourced from ``VecNormalize.get_original_reward()``
+    so the reported return is in the same (raw) units as ``evaluate_policy``
+    and the ``EvalCallback`` history — rather than the normalized reward
+    emitted by ``env.step``.
     """
     episode_rewards: list[float] = []
     episode_lengths: list[int] = []
     episode_mean_speeds: list[float] = []
+
+    vec_normalize = _find_vec_normalize(env)
+    use_original_reward = vec_normalize is not None and bool(
+        getattr(vec_normalize, "norm_reward", False)
+    )
 
     for _ in range(n_episodes):
         obs = env.reset()
@@ -177,6 +208,8 @@ def run_best_model_evaluation(
         while True:
             action, _ = model.predict(obs, deterministic=deterministic)
             obs, reward, done, info = env.step(action)
+            if use_original_reward:
+                reward = vec_normalize.get_original_reward()
             total_reward += float(np.asarray(reward).item())
             step_count += 1
 
