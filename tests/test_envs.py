@@ -38,17 +38,26 @@ class TestDroneHoverEnv:
             assert env.action_space.high[i] == 1.0
 
     def test_action_rescaling(self, env):
-        # The raw motor ranges are recovered by rescaling the normalized action.
+        # Verify normalized actions are translated into the expected control
+        # signals through the public step API instead of calling a private
+        # helper directly.
+        env.reset()
+
+        env.step(np.array([-1.0, -1.0, -1.0, -1.0]))
         np.testing.assert_allclose(
-            env._rescale_action(np.array([-1.0, -1.0, -1.0, -1.0])),
+            env.data.ctrl.copy(),
             np.array([0.0, -1.0, -1.0, -1.0]),
         )
+
+        env.step(np.array([1.0, 1.0, 1.0, 1.0]))
         np.testing.assert_allclose(
-            env._rescale_action(np.array([1.0, 1.0, 1.0, 1.0])),
+            env.data.ctrl.copy(),
             np.array([0.35, 1.0, 1.0, 1.0]),
         )
+
+        env.step(np.array([0.0, 0.0, 0.0, 0.0]))
         np.testing.assert_allclose(
-            env._rescale_action(np.array([0.0, 0.0, 0.0, 0.0])),
+            env.data.ctrl.copy(),
             np.array([0.175, 0.0, 0.0, 0.0]),
         )
 
