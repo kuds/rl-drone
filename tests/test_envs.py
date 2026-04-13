@@ -55,6 +55,8 @@ class TestDroneHoverEnv:
         assert "distance_to_target" in info
         assert "touch_reported" in info
         assert "sensor_reading" in info
+        assert "drone_speed" in info
+        assert info["drone_speed"] >= 0.0
 
     def test_observation_dtype(self, env):
         obs, _ = env.reset()

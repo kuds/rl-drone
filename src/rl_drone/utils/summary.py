@@ -20,15 +20,19 @@ Example output::
     Duration:       2h 15m 30s
     Final eval:     -17.07 +/- 4.94
     Avg ep length:  89.3 +/- 13.8 steps (0.89s sim time)
+    Avg speed:      0.46 +/- 0.09 m/s
     Best eval:      -5.23 +/- 3.14 (at 1,200,000 steps)
 
     Best Model Evaluation (30 episodes)
     ----------------------------------------
       Reward:       -17.07 +/- 4.94
       Ep length:    89.3 +/- 13.8 steps (0.89s sim time)
+      Speed:        0.464 +/- 0.089 m/s
 
-The ``Avg fwd vel`` / ``Fwd vel`` lines are only included when the
-environment populates ``info["drone_speed"]`` (currently the racer env).
+The ``Avg speed`` / ``Speed`` lines are only included when the environment
+populates ``info["drone_speed"]``. Both ``DroneHoverEnv`` and
+``DroneRacerEnv`` do so; the value is ``||qvel[:3]||`` — the magnitude of
+the drone's linear velocity, in m/s.
 """
 
 from __future__ import annotations
@@ -252,7 +256,7 @@ def format_stage_summary(
     if rollout_speeds.size > 0:
         lines.append(
             _label_line(
-                "Avg fwd vel",
+                "Avg speed",
                 f"{rollout_speeds.mean():.2f} +/- {rollout_speeds.std():.2f} m/s",
             )
         )
@@ -295,7 +299,7 @@ def format_stage_summary(
         lines.append(
             "  "
             + _label_line(
-                "Fwd vel",
+                "Speed",
                 f"{rollout_speeds.mean():.3f} +/- {rollout_speeds.std():.3f} m/s",
             )
         )

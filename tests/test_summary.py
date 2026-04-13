@@ -199,8 +199,8 @@ class TestFormatStageSummary:
             eval_history=self._eval_history(),
             step_dt=0.01,
         )
-        assert "Avg fwd vel" not in no_speed
-        assert "Fwd vel" not in no_speed
+        assert "Avg speed" not in no_speed
+        assert "Speed:" not in no_speed
 
         with_speed = format_stage_summary(
             project_name="BitCrazy",
@@ -213,8 +213,8 @@ class TestFormatStageSummary:
             eval_history=self._eval_history(),
             step_dt=0.01,
         )
-        assert "Avg fwd vel:" in with_speed
-        assert "Fwd vel:" in with_speed
+        assert "Avg speed:" in with_speed
+        assert "Speed:" in with_speed
         assert "m/s" in with_speed
 
     def test_omits_eval_block_when_history_missing(self):
