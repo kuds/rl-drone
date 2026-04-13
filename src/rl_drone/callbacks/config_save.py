@@ -57,6 +57,7 @@ class ConfigSaveCallback(BaseCallback):
             "action_space": str(model.action_space),
             "n_envs": model.n_envs,
             "device": str(model.device),
+            "gpu_device": _describe_gpu_device(model),
             "learning_rate": _extract_lr(model),
             "gamma": getattr(model, "gamma", None),
             "batch_size": getattr(model, "batch_size", None),
@@ -98,3 +99,44 @@ def _format_ent_coef(model) -> str | float | None:
     if isinstance(ent, str):
         return ent
     return ent
+
+
+def _describe_gpu_device(model) -> dict[str, Any] | None:
+    """Return a dict describing the GPU the model is running on, if any."""
+    try:
+        import torch
+    except ImportError:
+        return None
+
+    device = getattr(model, "device", None)
+    if device is None:
+        return None
+
+    device_str = str(device)
+    if not device_str.startswith("cuda"):
+        return None
+
+    if not torch.cuda.is_available():
+        return None
+
+    index = device.index if hasattr(device, "index") and device.index is not None else 0
+    try:
+        name = torch.cuda.get_device_name(index)
+    except Exception:
+        return None
+
+    info: dict[str, Any] = {
+        "index": index,
+        "name": name,
+        "cuda_version": torch.version.cuda,
+    }
+
+    try:
+        props = torch.cuda.get_device_properties(index)
+        info["total_memory_bytes"] = int(props.total_memory)
+        info["multi_processor_count"] = int(props.multi_processor_count)
+        info["compute_capability"] = f"{props.major}.{props.minor}"
+    except Exception:
+        pass
+
+    return info

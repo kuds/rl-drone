@@ -144,3 +144,86 @@ class Curve3D:
         curve_samples = self.evaluate(t_samples)
         segment_lengths = np.linalg.norm(np.diff(curve_samples, axis=0), axis=1)
         return np.sum(segment_lengths)
+
+    def visualize(
+        self,
+        num_samples: int = 200,
+        title: str = "3D Curve",
+        save_path: str | None = None,
+        show: bool = True,
+        ax=None,
+    ):
+        """Render the curve and its control points in 3D.
+
+        Args:
+            num_samples: Number of points sampled along the curve for the line.
+            title: Plot title.
+            save_path: If given, save the figure to this path.
+            show: If True, call ``plt.show()``. Ignored when ``save_path`` is set.
+            ax: Optional existing 3D matplotlib axes to draw into. If omitted,
+                a new figure and axes are created.
+
+        Returns:
+            The matplotlib Figure containing the plot.
+        """
+        import matplotlib
+        if save_path and not show:
+            matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        if ax is None:
+            fig = plt.figure(figsize=(8, 6))
+            ax = fig.add_subplot(111, projection="3d")
+        else:
+            fig = ax.figure
+
+        curve_pts = self.get_points(num_samples=num_samples, include_original=True)
+        ax.plot(
+            curve_pts[:, 0],
+            curve_pts[:, 1],
+            curve_pts[:, 2],
+            color="tab:blue",
+            linewidth=1.5,
+            label="Curve",
+        )
+
+        original = self.original_points
+        ax.scatter(
+            original[:, 0],
+            original[:, 1],
+            original[:, 2],
+            color="tab:red",
+            s=40,
+            depthshade=True,
+            label="Waypoints",
+        )
+
+        ax.scatter(
+            original[0, 0],
+            original[0, 1],
+            original[0, 2],
+            color="tab:green",
+            s=80,
+            marker="^",
+            label="Start",
+        )
+
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        ax.set_title(title)
+        ax.legend(loc="best", fontsize="small")
+
+        fig.tight_layout()
+
+        if save_path:
+            import os
+
+            os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+            fig.savefig(save_path, dpi=150)
+            if not show:
+                plt.close(fig)
+        elif show:
+            plt.show()
+
+        return fig
