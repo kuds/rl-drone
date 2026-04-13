@@ -1,6 +1,12 @@
 """Utility functions for reward shaping, track generation, model setup, plotting, and paths."""
 
-from rl_drone.utils.rewards import modified_tanh, modified_tanh_final, multiplicative_inverse
+from rl_drone.utils.rewards import (
+    REWARD_FUNCTIONS,
+    get_reward_function,
+    modified_tanh,
+    modified_tanh_final,
+    multiplicative_inverse,
+)
 from rl_drone.utils.track import (
     generate_equidistant_points,
     get_next_clockwise_point,
@@ -27,6 +33,8 @@ from rl_drone.utils.summary import (
 )
 
 __all__ = [
+    "REWARD_FUNCTIONS",
+    "get_reward_function",
     "modified_tanh",
     "modified_tanh_final",
     "multiplicative_inverse",

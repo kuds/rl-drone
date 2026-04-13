@@ -1,15 +1,7 @@
 """Drone racer environment - follow a 3D track through checkpoints."""
 
-import os
-
-import mujoco
-import numpy as np
-from gymnasium import utils
-from gymnasium.envs.mujoco import MujocoEnv
-from gymnasium.spaces import Box
-from robot_descriptions import cf2_mj_description
-
-from rl_drone.utils.rewards import modified_tanh, modified_tanh_final, multiplicative_inverse
+from rl_drone.envs.base import BaseDroneEnv, DEFAULT_FRAME_SKIP
+from rl_drone.utils.rewards import get_reward_function
 from rl_drone.utils.track import (
     add_radial_noise_to_points_rng,
     generate_equidistant_points,
@@ -18,87 +10,83 @@ from rl_drone.utils.track import (
 )
 
 
-class DroneRacerEnv(MujocoEnv):
+# Keys accepted in ``env_config`` along with their defaults.  Centralising
+# them here means typos in a notebook config raise a clear ``ValueError``
+# instead of silently creating an attribute that ``step`` never reads.
+_DEFAULT_CONFIG = {
+    "episode_length": 1_000,
+    "sphere_size": 0.2,
+    "track_size": 2.0,
+    "number_of_checkpoints": 8,
+    "track_height": 1.0,
+    "reward_function": "modified_tanh",
+    "terminate_without_contact": 200,
+    "speed_factor": 0.0,
+    "max_distance": 3.0,
+    "time_penalty": 0.0,
+    "out_of_bounds_penalty": -10.0,
+    "no_contact_penalty": -10.0,
+    "complete_bonus": 10.0,
+    "contact_bonus": 1.0,
+}
+
+
+class DroneRacerEnv(BaseDroneEnv):
     """Gymnasium environment for drone racing along a circular track.
 
-    The drone must fly through checkpoints arranged in a circle, collecting
-    rewards for reaching each checkpoint and completing laps.
+    The drone must fly through checkpoints arranged in a circle,
+    collecting rewards for reaching each checkpoint and completing laps.
+
+    Observation, action, and reset logic are inherited from
+    :class:`~rl_drone.envs.base.BaseDroneEnv`; this subclass only
+    implements the track state and the racing reward.
 
     Observation space (19-dim):
-        [drone_pos(3), drone_quat(4), vec_to_target(3),
-         drone_lin_vel(3), drone_ang_vel(3), target_pos(3)]
+        ``[drone_pos(3), drone_quat(4), vec_to_target(3),
+        drone_lin_vel(3), drone_ang_vel(3), target_pos(3)]``
 
-    Action space (4-dim, normalized to [-1, 1]):
-        [thrust, roll, pitch, yaw]
-        Actions are rescaled internally to the physical motor ranges:
-        thrust -> [0, 0.35], roll/pitch/yaw -> [-1, 1].
+    Action space (4-dim, normalized to ``[-1, 1]``):
+        ``[thrust, roll, pitch, yaw]``.  Actions are rescaled internally
+        to the physical motor ranges (``thrust -> [0, 0.35]``,
+        roll/pitch/yaw ``-> [-1, 1]``).
 
     Args:
-        env_config: Dictionary with environment configuration. Expected keys:
-            - episode_length: Max steps per episode.
-            - sphere_size: Checkpoint contact radius.
-            - track_size: Radius of the circular track.
-            - number_of_checkpoints: Number of waypoints on the track.
-            - track_height: Z-height of the track.
-            - reward_function: One of "multiplicative_inverse", "modified_tanh",
-              "modified_tanh_final", or "none".
-            - terminate_without_contact: Steps without contact before termination.
-            - speed_factor: Weight for speed reward component.
-            - max_distance: Distance threshold for out-of-bounds termination.
-            - time_penalty: Per-step penalty to encourage speed.
-            - out_of_bounds_penalty: Penalty for going out of bounds.
-            - no_contact_penalty: Penalty for no contact timeout.
-            - complete_bonus: Bonus for completing a lap.
-            - contact_bonus: Bonus for reaching a checkpoint.
+        env_config: Dictionary with environment configuration.  Any
+            missing key falls back to the default defined in
+            ``_DEFAULT_CONFIG``.  Unknown keys raise ``ValueError`` to
+            catch typos early.  Expected keys:
+
+            - ``episode_length``: Max steps per episode.
+            - ``sphere_size``: Checkpoint contact radius.
+            - ``track_size``: Radius of the circular track.
+            - ``number_of_checkpoints``: Number of waypoints on the track.
+            - ``track_height``: Z-height of the track.
+            - ``reward_function``: One of the keys registered in
+              :data:`~rl_drone.utils.rewards.REWARD_FUNCTIONS`
+              (``"multiplicative_inverse"``, ``"modified_tanh"``,
+              ``"modified_tanh_final"``, or ``"none"``).
+            - ``terminate_without_contact``: Steps without contact before
+              termination.
+            - ``speed_factor``: Weight for speed reward component.
+            - ``max_distance``: Distance threshold for out-of-bounds
+              termination.
+            - ``time_penalty``: Per-step penalty to encourage speed.
+            - ``out_of_bounds_penalty``: Penalty for going out of bounds.
+            - ``no_contact_penalty``: Penalty for no contact timeout.
+            - ``complete_bonus``: Bonus for completing a lap.
+            - ``contact_bonus``: Bonus for reaching a checkpoint.
     """
 
-    metadata = {
-        "render_modes": ["human", "rgb_array", "depth_array"],
-        "render_fps": 100,
-    }
-
-    REWARD_FUNCTIONS = {
-        "multiplicative_inverse": multiplicative_inverse,
-        "modified_tanh": modified_tanh,
-        "modified_tanh_final": modified_tanh_final,
-        "none": lambda x: 0,
-    }
-
     def __init__(self, env_config: dict, **kwargs):
-        utils.EzPickle.__init__(self, **kwargs)
+        self._apply_env_config(env_config)
 
-        for key, value in env_config.items():
-            setattr(self, key, value)
-
-        self.model_path = os.path.join(cf2_mj_description.PACKAGE_PATH, "scene.xml")
-        self.total_reward = 0
-
-        # Symmetric, normalized action space as recommended by SB3. The raw
-        # motor control ranges are stored separately and applied in step().
-        self._action_low = np.array([0.0, -1.0, -1.0, -1.0], dtype=np.float64)
-        self._action_high = np.array([0.35, 1.0, 1.0, 1.0], dtype=np.float64)
-        self.action_space = Box(
-            low=-1.0,
-            high=1.0,
-            shape=(4,),
-            dtype=np.float64,
-        )
-
-        self.observation_space = Box(
-            low=-np.inf, high=np.inf, shape=(19,), dtype=np.float64
-        )
-
-        MujocoEnv.__init__(
-            self,
-            self.model_path,
-            frame_skip=5,
-            observation_space=self.observation_space,
+        super().__init__(
+            frame_skip=DEFAULT_FRAME_SKIP,
+            max_distance=self.max_distance,
             **kwargs,
         )
 
-        if self.reward_function not in self.REWARD_FUNCTIONS:
-            raise ValueError(f"Unknown reward function: {self.reward_function}")
-        self._reward_fn = self.REWARD_FUNCTIONS[self.reward_function]
+        self._reward_fn = get_reward_function(self.reward_function)
 
         self.base_points = generate_equidistant_points(
             self.track_size, self.number_of_checkpoints, self.track_height
@@ -106,64 +94,70 @@ class DroneRacerEnv(MujocoEnv):
         self.track_points = add_radial_noise_to_points_rng(
             self.base_points, 0.25, 0.25, skip_origin=True, seed=0
         )
+
         self.current_point = (0, 0, self.track_height)
         self.next_point = get_next_clockwise_point(self.current_point, self.track_points)
-
         self.laps = 0
         self.total_contacts = 0
         self.steps_without_contact = 0
-        self.step_number = 0
-        self.target_pos_id = self.model.site("fly_sensor").id
-        self.target_pos = self.model.site_pos[self.target_pos_id]
-        self.drone_body_id = self.model.body("cf2").id
-        self.gyro_sensor_id = self.model.sensor("body_gyro").id
-        self.fly_sensor_id = self.model.sensor("touch_sensor").id
-        self.original_site_pos = self.model.site_pos[self.target_pos_id].copy()
 
-    def _update_track_position(self):
+    # ------------------------------------------------------------------
+    # Config / target plumbing
+    # ------------------------------------------------------------------
+
+    def _apply_env_config(self, env_config: dict) -> None:
+        """Validate ``env_config`` and copy values onto ``self``.
+
+        Missing keys fall back to :data:`_DEFAULT_CONFIG`; unknown keys
+        raise ``ValueError`` so typos are surfaced before training
+        starts.
+        """
+        unknown = set(env_config) - set(_DEFAULT_CONFIG)
+        if unknown:
+            known = ", ".join(sorted(_DEFAULT_CONFIG))
+            raise ValueError(
+                f"Unknown env_config keys: {sorted(unknown)}. Known: {known}."
+            )
+        for key, default in _DEFAULT_CONFIG.items():
+            setattr(self, key, env_config.get(key, default))
+
+    def _update_track_position(self) -> None:
         """Advance the target to the next checkpoint on the track."""
         self.current_point = self.next_point
         self.model.site_pos[self.target_pos_id] = self.current_point
-        self.next_point = get_next_clockwise_point(self.current_point, self.track_points)
+        self.next_point = get_next_clockwise_point(
+            self.current_point, self.track_points
+        )
         self.target_pos = self.model.site_pos[self.target_pos_id]
 
-    def _get_obs(self):
-        """Construct the 19-dim observation vector."""
-        drone_pos = self.data.qpos[:3]
-        drone_quat = self.data.qpos[3:7]
-        drone_lin_vel = self.data.qvel[:3]
-        drone_ang_vel = self.data.sensor(self.gyro_sensor_id).data
-        vec_to_target = self.target_pos - drone_pos
-
-        return np.concatenate(
-            [drone_pos, drone_quat, vec_to_target, drone_lin_vel, drone_ang_vel, self.target_pos]
-        ).astype(np.float64)
-
-    def _rescale_action(self, action):
-        """Rescale a normalized action in [-1, 1] to the physical motor range."""
-        action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
-        return self._action_low + (action + 1.0) * 0.5 * (
-            self._action_high - self._action_low
+    def _reset_task_state(self) -> None:
+        """Reset track bookkeeping at the start of an episode."""
+        self.current_point = (0, 0, self.track_height)
+        self.next_point = get_next_clockwise_point(
+            self.current_point, self.track_points
         )
+        self.total_contacts = 0
+        self.steps_without_contact = 0
+        self.laps = 0
+
+    # ------------------------------------------------------------------
+    # Step
+    # ------------------------------------------------------------------
 
     def step(self, action):
         """Apply action, step simulation, compute reward."""
+        self._apply_action(action)
+        self.step_number += 1
+
         truncated = False
         terminated = False
-        self.data.ctrl[:] = self._rescale_action(action)
-        for _ in range(self.frame_skip):
-            mujoco.mj_step(self.model, self.data)
 
-        self.step_number += 1
-        drone_pos = self.data.qpos[:3]
-        distance_to_target = np.linalg.norm(drone_pos - self.target_pos)
+        distance_to_target = self._distance_to_target()
+        drone_speed = self._drone_speed()
 
         distance_reward = self._reward_fn(distance_to_target)
-        reward = distance_reward
-
-        drone_speed = np.linalg.norm(self.data.qvel[:3])
         speed_reward = self.speed_factor * drone_speed
-        reward += speed_reward
+        reward = distance_reward + speed_reward
 
         made_contact = 0
         touch_reported = False
@@ -172,7 +166,7 @@ class DroneRacerEnv(MujocoEnv):
         oob_penalty = 0.0
         no_contact_penalty = 0.0
         time_penalty_applied = 0.0
-        sensor_reading = self.data.sensor(self.fly_sensor_id).data[0]
+        sensor_reading = self._touch_sensor_reading()
 
         if sensor_reading > 0:
             touch_reported = True
@@ -199,11 +193,11 @@ class DroneRacerEnv(MujocoEnv):
                 reward = oob_penalty
                 terminated = True
 
-        if distance_to_target > self.max_distance or drone_pos[2] < 0.025:
+        if self._is_out_of_bounds(distance_to_target):
             no_contact_penalty = self.no_contact_penalty
             reward = no_contact_penalty
             terminated = True
-        elif self.step_number > self.episode_length:
+        elif self._is_episode_over():
             truncated = True
 
         if not terminated and not truncated:
@@ -234,44 +228,3 @@ class DroneRacerEnv(MujocoEnv):
         }
 
         return observation, reward, terminated, truncated, info
-
-    def reset(self, seed=None, options=None):
-        """Reset to initial state."""
-        super().reset(seed=seed)
-        mujoco.mj_resetData(self.model, self.data)
-        noise = self.np_random.uniform(low=-0.1, high=0.1, size=3)
-        self.data.qpos[:3] += noise
-        self.data.qpos[2] = max(0.075, self.data.qpos[2])
-
-        self.model.site_pos[self.target_pos_id] = self.original_site_pos.copy()
-        self.target_pos = self.model.site_pos[self.target_pos_id]
-        self.current_point = (0, 0, self.track_height)
-        self.next_point = get_next_clockwise_point(self.current_point, self.track_points)
-        self.total_contacts = 0
-        self.step_number = 0
-        self.steps_without_contact = 0
-        self.total_reward = 0
-        self.laps = 0
-        return self._get_obs(), {}
-
-    def reset_model(self, seed=None):
-        """Reset internal model state (called by MujocoEnv)."""
-        self.step_number = 0
-        self.total_reward = 0
-        self.total_contacts = 0
-        self.laps = 0
-        self.steps_without_contact = 0
-
-        self.current_point = (0, 0, self.track_height)
-        self.next_point = get_next_clockwise_point(self.current_point, self.track_points)
-
-        qpos = self.init_qpos + self.np_random.uniform(
-            size=self.model.nq, low=-0.01, high=0.01
-        )
-        qpos[2] = max(0.075, qpos[2])
-
-        qvel = self.init_qvel + self.np_random.uniform(
-            size=self.model.nv, low=-0.01, high=0.01
-        )
-        self.set_state(qpos, qvel)
-        return self._get_obs()

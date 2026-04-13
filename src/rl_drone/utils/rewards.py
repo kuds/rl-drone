@@ -1,5 +1,7 @@
 """Reward shaping functions for drone navigation tasks."""
 
+from typing import Callable
+
 import numpy as np
 
 
@@ -31,3 +33,33 @@ def multiplicative_inverse(x, factor=2):
     Returns 1.0 at x=0 and decays smoothly toward 0.
     """
     return 1.0 / (1.0 + x * factor)
+
+
+def _no_reward(x):  # pragma: no cover - trivial
+    return 0.0
+
+
+# Centralized registry so every environment resolves reward-function names
+# the same way. Add new functions here rather than in each env class.
+REWARD_FUNCTIONS: dict[str, Callable[[float], float]] = {
+    "multiplicative_inverse": multiplicative_inverse,
+    "modified_tanh": modified_tanh,
+    "modified_tanh_final": modified_tanh_final,
+    "none": _no_reward,
+}
+
+
+def get_reward_function(name: str) -> Callable[[float], float]:
+    """Look up a reward function by name from :data:`REWARD_FUNCTIONS`.
+
+    Raises ``ValueError`` with the list of known names if the key is
+    unknown, which gives config typos a clearer failure mode than a
+    plain ``KeyError``.
+    """
+    try:
+        return REWARD_FUNCTIONS[name]
+    except KeyError as exc:
+        known = ", ".join(sorted(REWARD_FUNCTIONS))
+        raise ValueError(
+            f"Unknown reward function: {name!r}. Known: {known}."
+        ) from exc
