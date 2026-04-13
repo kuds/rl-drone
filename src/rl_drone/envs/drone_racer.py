@@ -28,8 +28,10 @@ class DroneRacerEnv(MujocoEnv):
         [drone_pos(3), drone_quat(4), vec_to_target(3),
          drone_lin_vel(3), drone_ang_vel(3), target_pos(3)]
 
-    Action space (4-dim):
-        [thrust(0..0.35), roll(-1..1), pitch(-1..1), yaw(-1..1)]
+    Action space (4-dim, normalized to [-1, 1]):
+        [thrust, roll, pitch, yaw]
+        Actions are rescaled internally to the physical motor ranges:
+        thrust -> [0, 0.35], roll/pitch/yaw -> [-1, 1].
 
     Args:
         env_config: Dictionary with environment configuration. Expected keys:
@@ -71,9 +73,14 @@ class DroneRacerEnv(MujocoEnv):
         self.model_path = os.path.join(cf2_mj_description.PACKAGE_PATH, "scene.xml")
         self.total_reward = 0
 
+        # Symmetric, normalized action space as recommended by SB3. The raw
+        # motor control ranges are stored separately and applied in step().
+        self._action_low = np.array([0.0, -1.0, -1.0, -1.0], dtype=np.float64)
+        self._action_high = np.array([0.35, 1.0, 1.0, 1.0], dtype=np.float64)
         self.action_space = Box(
-            low=np.array([0.0, -1.0, -1.0, -1.0]),
-            high=np.array([0.35, 1.0, 1.0, 1.0]),
+            low=-1.0,
+            high=1.0,
+            shape=(4,),
             dtype=np.float64,
         )
 
@@ -132,11 +139,18 @@ class DroneRacerEnv(MujocoEnv):
             [drone_pos, drone_quat, vec_to_target, drone_lin_vel, drone_ang_vel, self.target_pos]
         ).astype(np.float64)
 
+    def _rescale_action(self, action):
+        """Rescale a normalized action in [-1, 1] to the physical motor range."""
+        action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        return self._action_low + (action + 1.0) * 0.5 * (
+            self._action_high - self._action_low
+        )
+
     def step(self, action):
         """Apply action, step simulation, compute reward."""
         truncated = False
         terminated = False
-        self.data.ctrl[:] = action
+        self.data.ctrl[:] = self._rescale_action(action)
         for _ in range(self.frame_skip):
             mujoco.mj_step(self.model, self.data)
 
