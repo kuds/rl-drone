@@ -32,11 +32,25 @@ class TestDroneHoverEnv:
         assert env.action_space.shape == (4,)
 
     def test_action_space_bounds(self, env):
-        assert env.action_space.low[0] == 0.0
-        assert env.action_space.high[0] == 0.35
-        for i in range(1, 4):
+        # Symmetric, normalized action space as recommended by SB3.
+        for i in range(4):
             assert env.action_space.low[i] == -1.0
             assert env.action_space.high[i] == 1.0
+
+    def test_action_rescaling(self, env):
+        # The raw motor ranges are recovered by rescaling the normalized action.
+        np.testing.assert_allclose(
+            env._rescale_action(np.array([-1.0, -1.0, -1.0, -1.0])),
+            np.array([0.0, -1.0, -1.0, -1.0]),
+        )
+        np.testing.assert_allclose(
+            env._rescale_action(np.array([1.0, 1.0, 1.0, 1.0])),
+            np.array([0.35, 1.0, 1.0, 1.0]),
+        )
+        np.testing.assert_allclose(
+            env._rescale_action(np.array([0.0, 0.0, 0.0, 0.0])),
+            np.array([0.175, 0.0, 0.0, 0.0]),
+        )
 
     def test_reset_returns_correct_shape(self, env):
         obs, info = env.reset()
