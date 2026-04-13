@@ -67,9 +67,9 @@ src/rl_drone/
     └── paths.py             # build_run_paths / RunPaths artifact layout
 ```
 
-The Jupyter notebooks in the root directory are the original Colab training
-scripts. The `src/rl_drone/` package extracts their shared code into a
-reusable, testable library.
+The Jupyter notebooks in the `notebooks/` directory are the original Colab
+training scripts. The `src/rl_drone/` package extracts their shared code into
+a reusable, testable library.
 
 ### Training Artifact Layout
 
