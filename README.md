@@ -88,6 +88,7 @@ consistent directory tree for training artifacts. With Google Drive mounted at
     ├── evaluations.npz                   # from EvalCallback
     ├── <name_prefix>.csv                 # from ReformatEvalCallback
     ├── config.json                       # from ConfigSaveCallback
+    ├── stage_summary.txt                 # from write_stage_summary (post-training)
     ├── tensorboard/                      # TensorBoard event files
     ├── monitor/                          # Monitor wrapper CSV logs
     ├── checkpoints/                      # CheckpointCallback snapshots

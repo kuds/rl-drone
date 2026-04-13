@@ -131,6 +131,7 @@ class DroneHoverEnv(MujocoEnv):
         self.step_number += 1
         drone_pos = self.data.qpos[:3]
         distance_to_target = np.linalg.norm(drone_pos - self.target_pos)
+        drone_speed = float(np.linalg.norm(self.data.qvel[:3]))
         distance_reward = modified_tanh_final(distance_to_target)
         reward = distance_reward
         contact_bonus = 0.0
@@ -171,6 +172,7 @@ class DroneHoverEnv(MujocoEnv):
             "sensor_reading": sensor_reading,
             "made_contact": made_contact,
             "total_contacts": self.total_contacts,
+            "drone_speed": drone_speed,
             "success": success,
             "reward_distance": distance_reward,
             "reward_contact": contact_bonus,
