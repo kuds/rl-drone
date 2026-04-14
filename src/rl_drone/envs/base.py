@@ -11,7 +11,8 @@ What this base class provides:
   motor ranges stored on the instance, so subclasses never rewrite the
   rescaling logic. See :meth:`_rescale_action`.
 * A 19-dim observation vector :math:`(pos, quat, vec\\_to\\_target,
-  lin\\_vel, ang\\_vel, target\\_pos)` built once in :meth:`_get_obs`.
+  lin\\_vel, ang\\_vel, target\\_pos)` built by :meth:`_compute_raw_obs`,
+  optionally frame-stacked into a flat history by :meth:`_get_obs`.
 * MuJoCo body / site / sensor handles resolved in ``__init__``.
 * Reset noise and episode-bound thresholds as module constants so they
   are easy to tune consistently across tasks.
@@ -23,6 +24,7 @@ subclasses, which differ meaningfully between the hover and racer tasks.
 from __future__ import annotations
 
 import os
+from collections import deque
 
 import mujoco
 import numpy as np
@@ -41,7 +43,8 @@ from robot_descriptions import cf2_mj_description
 ACTION_LOW = np.array([0.0, -1.0, -1.0, -1.0], dtype=np.float32)
 ACTION_HIGH = np.array([0.35, 1.0, 1.0, 1.0], dtype=np.float32)
 
-#: Dimensionality of the observation vector produced by :meth:`_get_obs`.
+#: Dimensionality of a single raw observation frame.  The agent's actual
+#: observation is ``OBS_DIM * frame_stack`` long; see :meth:`_get_obs`.
 OBS_DIM = 19
 
 #: Drone z-coordinate below which the episode terminates (ground contact).
@@ -74,6 +77,13 @@ class BaseDroneEnv(MujocoEnv, utils.EzPickle):
         frame_skip: MuJoCo substeps per environment step.
         max_distance: Distance threshold (drone-to-target) beyond which
             the episode is considered out of bounds.
+        frame_stack: Number of consecutive raw observations concatenated
+            to form the agent's observation.  ``1`` (the default)
+            preserves the original 19-dim observation; values greater
+            than one return a flat ``OBS_DIM * frame_stack`` vector with
+            the most recent frame at the end, mimicking SB3's
+            ``VecFrameStack`` so an MLP policy can recover velocity from
+            position differences.
         **kwargs: Forwarded to :class:`gymnasium.envs.mujoco.MujocoEnv`.
     """
 
@@ -87,6 +97,7 @@ class BaseDroneEnv(MujocoEnv, utils.EzPickle):
         *,
         frame_skip: int = DEFAULT_FRAME_SKIP,
         max_distance: float = 2.0,
+        frame_stack: int = 1,
         **kwargs,
     ):
         utils.EzPickle.__init__(self, **kwargs)
@@ -94,10 +105,26 @@ class BaseDroneEnv(MujocoEnv, utils.EzPickle):
         self.model_path = os.path.join(cf2_mj_description.PACKAGE_PATH, "scene.xml")
         self.max_distance = float(max_distance)
 
+        if int(frame_stack) < 1:
+            raise ValueError(
+                f"frame_stack must be >= 1, got {frame_stack}."
+            )
+        self._frame_stack = int(frame_stack)
+        # Pre-fill with zeros so any ``_get_obs`` call before the first
+        # ``reset`` still returns a shape-correct vector.  ``reset``
+        # clears and refills the buffer with the real initial frame.
+        self._frame_buffer: deque[np.ndarray] = deque(
+            (np.zeros(OBS_DIM, dtype=np.float64) for _ in range(self._frame_stack)),
+            maxlen=self._frame_stack,
+        )
+
         # The observation space is fixed by :meth:`_get_obs`; publish it
         # before calling ``MujocoEnv.__init__`` so the parent keeps it.
         self.observation_space = Box(
-            low=-np.inf, high=np.inf, shape=(OBS_DIM,), dtype=np.float64
+            low=-np.inf,
+            high=np.inf,
+            shape=(OBS_DIM * self._frame_stack,),
+            dtype=np.float64,
         )
 
         MujocoEnv.__init__(
@@ -157,8 +184,8 @@ class BaseDroneEnv(MujocoEnv, utils.EzPickle):
         for _ in range(self.frame_skip):
             mujoco.mj_step(self.model, self.data)
 
-    def _get_obs(self) -> np.ndarray:
-        """Construct the 19-dim observation vector.
+    def _compute_raw_obs(self) -> np.ndarray:
+        """Return the current 19-dim observation for a single frame.
 
         Layout: ``[drone_pos(3), drone_quat(4), vec_to_target(3),
         drone_lin_vel(3), drone_ang_vel(3), target_pos(3)]``.
@@ -179,6 +206,19 @@ class BaseDroneEnv(MujocoEnv, utils.EzPickle):
                 self.target_pos,
             ]
         ).astype(np.float64)
+
+    def _get_obs(self) -> np.ndarray:
+        """Append the current frame to the buffer and return the stack.
+
+        With ``frame_stack=1`` this returns the raw 19-dim observation
+        unchanged; with larger values it returns a flat vector of the
+        last ``frame_stack`` frames concatenated in chronological order
+        (oldest first, newest last).
+        """
+        self._frame_buffer.append(self._compute_raw_obs())
+        if self._frame_stack == 1:
+            return self._frame_buffer[-1]
+        return np.concatenate(self._frame_buffer).astype(np.float64)
 
     # ------------------------------------------------------------------
     # Convenience queries used by subclass ``step`` methods.
@@ -252,6 +292,13 @@ class BaseDroneEnv(MujocoEnv, utils.EzPickle):
         self._apply_position_reset()
         self._reset_base_state()
         self._reset_task_state()
+        # Reinitialise the frame stack with copies of the post-reset
+        # observation so the very first agent step sees a consistent
+        # history rather than a mix of zeros and a real frame.
+        initial_raw = self._compute_raw_obs()
+        self._frame_buffer.clear()
+        for _ in range(self._frame_stack):
+            self._frame_buffer.append(initial_raw.copy())
         return self._get_obs(), {}
 
     def reset_model(self):

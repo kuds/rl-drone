@@ -28,6 +28,7 @@ _DEFAULT_CONFIG = {
     "no_contact_penalty": -10.0,
     "complete_bonus": 10.0,
     "contact_bonus": 1.0,
+    "frame_stack": 1,
 }
 
 
@@ -41,9 +42,12 @@ class DroneRacerEnv(BaseDroneEnv):
     :class:`~rl_drone.envs.base.BaseDroneEnv`; this subclass only
     implements the track state and the racing reward.
 
-    Observation space (19-dim):
-        ``[drone_pos(3), drone_quat(4), vec_to_target(3),
-        drone_lin_vel(3), drone_ang_vel(3), target_pos(3)]``
+    Observation space:
+        A flat vector of ``19 * frame_stack`` values.  Each 19-dim frame
+        is laid out as ``[drone_pos(3), drone_quat(4), vec_to_target(3),
+        drone_lin_vel(3), drone_ang_vel(3), target_pos(3)]``; with the
+        default ``frame_stack=1`` the observation is the raw 19-dim
+        vector.
 
     Action space (4-dim, normalized to ``[-1, 1]``):
         ``[thrust, roll, pitch, yaw]``.  Actions are rescaled internally
@@ -75,6 +79,10 @@ class DroneRacerEnv(BaseDroneEnv):
             - ``no_contact_penalty``: Penalty for no contact timeout.
             - ``complete_bonus``: Bonus for completing a lap.
             - ``contact_bonus``: Bonus for reaching a checkpoint.
+            - ``frame_stack``: Number of consecutive raw observations to
+              concatenate into the agent's observation.  Defaults to
+              ``1`` (no stacking); larger values let an MLP policy
+              recover temporal information directly from the input.
     """
 
     def __init__(self, env_config: dict, **kwargs):
@@ -83,6 +91,7 @@ class DroneRacerEnv(BaseDroneEnv):
         super().__init__(
             frame_skip=DEFAULT_FRAME_SKIP,
             max_distance=self.max_distance,
+            frame_stack=self.frame_stack,
             **kwargs,
         )
 
