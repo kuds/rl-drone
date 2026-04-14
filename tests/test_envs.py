@@ -11,6 +11,7 @@ try:
     from rl_drone.utils.model_xml import setup_mujoco_model
     setup_mujoco_model(sphere_size=0.25, target_height=1.0)
     from rl_drone.envs.drone_hover import DroneHoverEnv
+    from rl_drone.envs.drone_racer import DroneRacerEnv
     HAS_MUJOCO = True
 except (ImportError, AttributeError, OSError):
     HAS_MUJOCO = False
@@ -112,3 +113,76 @@ class TestDroneHoverEnv:
         env.data.qpos[2] = 0.01  # Below ground threshold
         _, _, terminated, _, _ = env.step(env.action_space.sample())
         assert terminated
+
+
+class TestDroneRacerEnv:
+    """Cover the racer-specific config plumbing, especially ``frame_stack``.
+
+    The notebook exposes ``frame_stack`` as an ``env_config`` key and
+    expects the env to publish a flat ``19 * frame_stack`` observation;
+    these tests pin that contract so future config typos surface early.
+    """
+
+    def test_default_observation_shape(self):
+        env = DroneRacerEnv({"episode_length": 50})
+        try:
+            assert env.observation_space.shape == (19,)
+            obs, _ = env.reset()
+            assert obs.shape == (19,)
+        finally:
+            env.close()
+
+    def test_frame_stack_one_matches_default(self):
+        env = DroneRacerEnv({"episode_length": 50, "frame_stack": 1})
+        try:
+            assert env.observation_space.shape == (19,)
+            obs, _ = env.reset()
+            assert obs.shape == (19,)
+        finally:
+            env.close()
+
+    def test_frame_stack_expands_observation_space(self):
+        env = DroneRacerEnv({"episode_length": 50, "frame_stack": 4})
+        try:
+            assert env.observation_space.shape == (19 * 4,)
+            obs, _ = env.reset()
+            assert obs.shape == (19 * 4,)
+            obs2, _, _, _, _ = env.step(env.action_space.sample())
+            assert obs2.shape == (19 * 4,)
+        finally:
+            env.close()
+
+    def test_frame_stack_initial_obs_is_repeated(self):
+        # After reset the buffer should hold ``frame_stack`` copies of the
+        # current frame, so all per-frame slices match.
+        env = DroneRacerEnv({"episode_length": 50, "frame_stack": 3})
+        try:
+            obs, _ = env.reset()
+            frames = obs.reshape(3, 19)
+            np.testing.assert_allclose(frames[0], frames[1])
+            np.testing.assert_allclose(frames[1], frames[2])
+        finally:
+            env.close()
+
+    def test_frame_stack_newest_frame_is_last(self):
+        # After a single step, the most recent frame (the post-step state)
+        # must occupy the trailing slot in the stacked observation.
+        env = DroneRacerEnv({"episode_length": 50, "frame_stack": 2})
+        try:
+            initial, _ = env.reset()
+            initial_frames = initial.reshape(2, 19)
+            stepped, _, _, _, _ = env.step(env.action_space.sample())
+            stepped_frames = stepped.reshape(2, 19)
+            # The oldest slot of the stepped obs is the previous newest
+            # frame (which was identical to the initial frame).
+            np.testing.assert_allclose(stepped_frames[0], initial_frames[-1])
+        finally:
+            env.close()
+
+    def test_unknown_config_key_raises(self):
+        with pytest.raises(ValueError, match="Unknown env_config keys"):
+            DroneRacerEnv({"not_a_real_key": 1})
+
+    def test_invalid_frame_stack_raises(self):
+        with pytest.raises(ValueError, match="frame_stack must be >= 1"):
+            DroneRacerEnv({"frame_stack": 0})
