@@ -38,8 +38,8 @@ from robot_descriptions import cf2_mj_description
 
 #: Raw CF2 motor control ranges. The first actuator is the collective
 #: thrust (positive only); the other three are body-axis torques.
-ACTION_LOW = np.array([0.0, -1.0, -1.0, -1.0], dtype=np.float64)
-ACTION_HIGH = np.array([0.35, 1.0, 1.0, 1.0], dtype=np.float64)
+ACTION_LOW = np.array([0.0, -1.0, -1.0, -1.0], dtype=np.float32)
+ACTION_HIGH = np.array([0.35, 1.0, 1.0, 1.0], dtype=np.float32)
 
 #: Dimensionality of the observation vector produced by :meth:`_get_obs`.
 OBS_DIM = 19
@@ -140,13 +140,13 @@ class BaseDroneEnv(MujocoEnv, utils.EzPickle):
         policy output scale independent of the physical motor limits.
         """
         self.action_space = Box(
-            low=-1.0, high=1.0, shape=(4,), dtype=np.float64
+            low=-1.0, high=1.0, shape=(4,), dtype=np.float32
         )
         return self.action_space
 
     def _rescale_action(self, action: np.ndarray) -> np.ndarray:
         """Map a normalized action in :math:`[-1, 1]` to the motor range."""
-        action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        action = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
         return self._action_low + (action + 1.0) * 0.5 * (
             self._action_high - self._action_low
         )
