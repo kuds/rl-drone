@@ -16,6 +16,7 @@ from rl_drone.utils.model_xml import setup_mujoco_model
 from rl_drone.utils.plotting import (
     plot_learning_curves,
     plot_reward_breakdown,
+    plot_training_reward_over_time,
     plot_trajectory_3d,
 )
 from rl_drone.utils.paths import (
@@ -44,6 +45,7 @@ __all__ = [
     "setup_mujoco_model",
     "plot_learning_curves",
     "plot_reward_breakdown",
+    "plot_training_reward_over_time",
     "plot_trajectory_3d",
     "RunPaths",
     "TIMESTAMP_FORMAT",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import glob
 import os
 from typing import Sequence
 
@@ -133,6 +134,135 @@ def plot_reward_breakdown(
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
         fig.savefig(save_path, dpi=150)
         plt.close(fig)
+    elif show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
+def plot_training_reward_over_time(
+    monitor_dir: str,
+    *,
+    smoothing_window: int = 50,
+    x_axis: str = "timesteps",
+    title: str = "Training Reward over Time",
+    save_path: str | None = None,
+    show: bool = False,
+):
+    """Plot per-episode training reward over time from SB3 Monitor CSVs.
+
+    Reads every ``*.monitor.csv`` file written by Stable-Baselines3's
+    ``Monitor`` wrapper in *monitor_dir* (one per vectorized worker),
+    stitches the per-episode ``(reward, length, wall-time)`` triples back
+    into chronological order, and plots the reward signal against the
+    chosen x-axis. Compared with :func:`plot_learning_curves` — which only
+    samples the evaluation env every ``eval_freq`` steps — this is the
+    *dense* training-reward trace containing one point per training
+    episode.
+
+    A rolling mean is drawn on top of the raw episode-reward scatter to
+    make the learning trend easy to read even when the per-episode signal
+    is noisy.
+
+    Args:
+        monitor_dir: Directory containing SB3 ``*.monitor.csv`` files. This
+            is typically ``paths.monitor_dir`` from :func:`build_run_paths`.
+        smoothing_window: Rolling-mean window in episodes. Set to ``1`` to
+            disable smoothing.
+        x_axis: Either ``"timesteps"`` (cumulative training steps) or
+            ``"walltime"`` (hours since run start).
+        title: Figure title.
+        save_path: If given, save the figure to this path.
+        show: If *True*, call ``plt.show()`` (ignored when *save_path* is
+            set and *show* is *False*).
+
+    Returns:
+        The matplotlib ``Figure``, or ``None`` if no monitor CSVs were
+        found or they contained no completed episodes.
+    """
+    if x_axis not in ("timesteps", "walltime"):
+        raise ValueError(
+            f"x_axis must be 'timesteps' or 'walltime', got {x_axis!r}"
+        )
+
+    csv_files = sorted(glob.glob(os.path.join(monitor_dir, "*.monitor.csv")))
+    if not csv_files:
+        return None
+
+    episodes: list[tuple[float, float, int]] = []
+    for path in csv_files:
+        with open(path) as f:
+            first_line = f.readline()
+            # SB3 Monitor writes a JSON metadata comment as line 1.
+            if not first_line.startswith("#"):
+                f.seek(0)
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    episodes.append(
+                        (float(row["t"]), float(row["r"]), int(row["l"]))
+                    )
+                except (KeyError, ValueError):
+                    # Skip malformed rows rather than crashing the plot.
+                    continue
+
+    if not episodes:
+        return None
+
+    # Sort episodes chronologically across all parallel workers so the
+    # cumulative-step x-axis increases monotonically.
+    episodes.sort(key=lambda e: e[0])
+    walltimes = np.array([e[0] for e in episodes], dtype=float)
+    rewards = np.array([e[1] for e in episodes], dtype=float)
+    lengths = np.array([e[2] for e in episodes], dtype=int)
+    cum_steps = np.cumsum(lengths)
+
+    if x_axis == "timesteps":
+        xs = cum_steps
+        xlabel = "Training timesteps"
+    else:
+        xs = walltimes / 3600.0
+        xlabel = "Wall-clock time (hours)"
+
+    import matplotlib
+    if save_path and not show:
+        matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(
+        xs,
+        rewards,
+        alpha=0.25,
+        color="tab:blue",
+        label="Episode reward",
+    )
+
+    window = max(1, int(smoothing_window))
+    if window > 1 and rewards.size >= window:
+        kernel = np.ones(window) / window
+        smoothed = np.convolve(rewards, kernel, mode="valid")
+        ax.plot(
+            xs[window - 1 :],
+            smoothed,
+            color="tab:blue",
+            linewidth=2.0,
+            label=f"Rolling mean (window={window})",
+        )
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Episode reward")
+    ax.set_title(title)
+    ax.legend(loc="best")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        fig.savefig(save_path, dpi=150)
+        if not show:
+            plt.close(fig)
     elif show:
         plt.show()
     else:
