@@ -72,7 +72,11 @@ class DroneHoverEnv(BaseDroneEnv):
 
     def _randomize_fly_zone(self) -> None:
         """Move the target to a random position near the original site."""
-        noise = self.noise_magnitude * np.random.randn(3)
+        rng = getattr(self, "np_random", None)
+        if rng is None:
+            noise = self.noise_magnitude * np.random.randn(3)
+        else:
+            noise = self.noise_magnitude * rng.standard_normal(3)
         new_pos = self.original_site_pos + noise
         new_pos[2] = max(0.5, new_pos[2])
         self.model.site_pos[self.target_pos_id] = new_pos

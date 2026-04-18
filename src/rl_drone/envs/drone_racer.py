@@ -198,13 +198,13 @@ class DroneRacerEnv(BaseDroneEnv):
         else:
             self.steps_without_contact += 1
             if self.steps_without_contact > self.terminate_without_contact:
-                oob_penalty = self.out_of_bounds_penalty
-                reward = oob_penalty
+                no_contact_penalty = self.no_contact_penalty
+                reward = no_contact_penalty
                 terminated = True
 
         if self._is_out_of_bounds(distance_to_target):
-            no_contact_penalty = self.no_contact_penalty
-            reward = no_contact_penalty
+            oob_penalty = self.out_of_bounds_penalty
+            reward = oob_penalty
             terminated = True
         elif self._is_episode_over():
             truncated = True
