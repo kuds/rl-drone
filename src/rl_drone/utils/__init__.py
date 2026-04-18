@@ -34,6 +34,7 @@ from rl_drone.utils.summary import (
     run_best_model_evaluation,
     write_stage_summary,
 )
+from rl_drone.utils.versioning import get_git_version_info
 
 __all__ = [
     "REWARD_FUNCTIONS",
@@ -60,4 +61,5 @@ __all__ = [
     "read_eval_history",
     "run_best_model_evaluation",
     "write_stage_summary",
+    "get_git_version_info",
 ]

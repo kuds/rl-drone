@@ -7,6 +7,8 @@ from typing import Any
 
 from stable_baselines3.common.callbacks import BaseCallback
 
+from rl_drone.utils.versioning import get_git_version_info
+
 
 class ConfigSaveCallback(BaseCallback):
     """Saves experiment metadata and hyperparameters as a JSON file.
@@ -65,6 +67,7 @@ class ConfigSaveCallback(BaseCallback):
             "tau": getattr(model, "tau", None),
             "ent_coef": _format_ent_coef(model),
             "total_timesteps": getattr(model, "_total_timesteps", None),
+            "code_version": get_git_version_info(),
             "hyperparams": self.hyperparams,
         }
 
